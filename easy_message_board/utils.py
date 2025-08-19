@@ -2,6 +2,8 @@ import bpy
 from bpy.props import *
 from datetime import datetime, timezone
 
+
+
 def textBox(self, sentence, icon='NONE', line=56):
     layout = self.box().column()
     if sentence.startswith('LINK:'):
@@ -46,3 +48,35 @@ def format_time(timestamp):
     date = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
     date = date.replace(tzinfo=timezone.utc)
     return date.timestamp()
+
+def time_to_calendar(timestamp):
+    dt = datetime.fromtimestamp(timestamp)  # local time
+    return dt.strftime("%Y-%m-%d %H:%M")
+
+def download_file(url, folder):
+    import requests
+    import os
+    # Replace with the actual URL
+    
+    output_filename = url.split('/')[-1]
+    output_path = os.path.join(folder, output_filename)
+
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()  # Raise an exception for bad status codes
+
+        with open(output_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error downloading file: {e}")
+
+def play_sound(path, volume = 1.0):
+    import os
+    if not os.path.exists(path): return
+    import aud
+    dev = aud.Device()
+    sound = aud.Sound(path)
+    dev.volume = volume
+    dev.play(sound)

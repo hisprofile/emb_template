@@ -1,29 +1,36 @@
+import bpy
 import json
 import os
-import bpy
 import tomllib
 import time
 import requests
-from bpy.types import Operator, Panel
+from threading import Thread
+from . import bpy_classes
+from bpy.types import Panel
 from bpy.utils import register_class, unregister_class
-from datetime import datetime, timezone
-from math import floor
 from .utils import *
+from pathlib import Path
 
 from .bpy_classes import master_classes
+from .main_vars import *
 
-emb_path = os.path.dirname(__file__)
+global_id = None
+
+'''emb_path = os.path.dirname(__file__)
+emb_data_path = os.path.join(emb_path, 'data.json')
 path_split = emb_path.split(os.path.sep)
-print(path_split)
 addon_path = os.path.sep.join(path_split[:-1])
 addon_path_name = os.path.basename(addon_path)
-blender_addons_path = os.path.sep.join(path_split[:-2])
-globalPrefsPath = os.path.join(blender_addons_path, 'emb_prefs.json')
-messages_path = os.path.join(emb_path, 'messages')
+blender_resource_path = str(Path(bpy.utils.resource_path('USER')).parents[0])
+globalPrefsFolder = os.path.join(blender_resource_path, 'emb_data')
+if not os.path.exists(globalPrefsFolder):
+    os.makedirs(globalPrefsFolder)
+globalPrefsPath = os.path.join(globalPrefsFolder, 'emb_prefs.json')
+messages_path = os.path.join(emb_path, 'messages.data')
+separate_chr = '¸' '''
 
 emb_id = None
 emb_classes = set()
-
 messages = dict()
 
 try:
@@ -41,48 +48,89 @@ class autoUpdateJson(dict):
                 return None
         except:
             return None
+    def write(self):
+        self.auto_update()
+    
     def __setitem__(self, key, value):
         super().__setitem__(key, value)
         self.auto_update()
 
-def loadMessages() -> dict:
-    messages.clear()
-    for message_name in os.listdir(messages_path):
-        message_json = os.path.join(messages_path, message_name)
-        if not message_name.endswith('.json'): continue
-        with open(message_json, 'r') as file:
-            message = autoUpdateJson(json.loads(file.read()))
-            message.json_path = message_json
+class msgs_structure(dict):
+    file_path = ''
+    block = False
 
-        message_id = os.path.splitext(message_name)[0]
-        messages[message_id] = message
-    return messages
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        if not self.block: self.write()
 
-def markRead(id) -> None:
-    if messages[id]['read'] == False:
-        messages[id]['read'] = True
-        with open(os.path.join(messages_path, id+'.json'), 'w+') as file:
-            file.write(json.dumps(messages[id], indent=2))
-            return None
-    return None
+    def load(self, path):
+        if not os.path.exists(path):
+            raise OSError
+        self.file_path = path
+        file = open(path, 'r')
+        string = file.read()
+        file.close()
+        self.string_to_dict(string)
+        return self
+
+    def string_to_dict(self, string: str):
+        self.block = True
+        string = string.lstrip('\n').rstrip('\n')
+        lines = string.split('\n')
+        while '' in lines:
+            lines.remove('')
+        lines = list(map(lambda a: a.split(separate_chr), lines))
+        for item in lines:
+            if len(item) != 5: continue
+            id, title, text, icons, size = item
+            self[int(id)] = {'title': title, 'text': text, 'icons': icons, 'size': size}
+        self.block = False
+        return self
+
+    def write(self):
+        file = open(self.file_path, 'w')
+        for key, value in self.items():
+            file.write(separate_chr.join([str(key), *list(value.values())]))
+            file.write('\n')
+        file.close()
+
+    @property
+    def first(self):
+        return next(iter(sorted(list(self.items()), key=lambda a: a[0], reverse=True)), (0, 0))
 
 def localEmbSettings() -> dict:
     with open(os.path.join(emb_path, 'settings.json'), 'r') as file:
         return json.loads(file.read())
     
-def localEmbData() -> dict:
-    with open(os.path.join(emb_path, 'data.json'), 'r') as file:
-        return json.loads(file.read())
+def localEmbData() -> autoUpdateJson:
+    if not os.path.exists(emb_data_path):
+        init_data = autoUpdateJson({
+            "last_message_time": int(time.time()),
+            "new_messages": 0,
+            "update_ignore_this_version": [
+                0,
+                0,
+                0
+            ],
+            "update_ignore_future_versions": False,
+        })
+        init_data.json_path = emb_data_path
+        init_data.write()
+        return init_data
+    else:
+        with open(emb_data_path, 'r') as file:
+            emb_data = autoUpdateJson(json.loads(file.read()))
+            emb_data.json_path = emb_data_path
+            return emb_data
 
 def globalPrefsPathExists() -> bool:
     return os.path.exists(globalPrefsPath)
 
 def globalPrefsJsonWrite(data: dict) -> None:
-    print('test')
     with open(globalPrefsPath, 'x') as file:
         file.write(json.dumps(data, indent=2))
         return None
-    print('test2')
+    
 def globalPrefsJsonRead() -> dict:
     with open(globalPrefsPath, 'r') as file:
         return json.loads(file.read())
@@ -97,59 +145,87 @@ def getAddonData() -> dict:
         return bl_info
     return dict()
 
+def getLocalMessages() -> dict:
+    messages = msgs_structure()
+    if not os.path.exists(messages_path):
+        messages.file_path = messages_path
+        messages.write()
+    else:
+        try:
+            messages.load(messages_path)
+        except:
+            messages.file_path = messages_path
+            messages.write()
+    return messages
+
 addonData = getAddonData()
-emb_data = autoUpdateJson(localEmbData())
-emb_data.json_path = os.path.join(emb_path, 'data.json')
+emb_data = localEmbData()
+messages = getLocalMessages()
 
-def initGlobalPrefs() -> None: # first time start
+
+def getGlobalPrefs() -> None:
     if globalPrefsPathExists():
-        return
-    init_data = {
-        'interval': 600, # How many seconds between each check
-        'global_disable': False, # Globally disable the checking
-        'delete_after_#': 15, # Delete messages when they exceed a threshold. This is per-EMB, not across all EMBs. 0 to never delete
-        'volume': 0.2,
-        'github_token': 'YOUR_TOKEN_HERE' # User's github token to get around rate limiting, should that be a concern
-    }
-    emb_data['last_message_time'] = floor(time.time())
-    globalPrefsJsonWrite(init_data)
+        prefs = autoUpdateJson(globalPrefsJsonRead())
+        prefs.json_path = globalPrefsPath
+        return prefs
+    else: # first start
+        notif_url = 'https://github.com/sourcesounds/tf/raw/refs/heads/master/sound/ui/message_update.wav'
+        notif_name = notif_url.split('/')[-1]
+        download_notif_thread = Thread(target=download_file, args=[notif_url, globalPrefsFolder], daemon=True)
+        download_notif_thread.start()
+        init_data = autoUpdateJson({
+            'interval': 600, # How many seconds between each check
+            'global_disable': False, # Globally disable the checking
+            #'delete_after_#': 15, # Delete messages when they exceed a threshold. This is per-EMB, not across all EMBs. 0 to never delete
+            'volume': 0.2,
+            'notification_sound': os.path.join(globalPrefsFolder, notif_name),
+            'never_notify': False
+        })
+        init_data.json_path = globalPrefsPath
+        init_data.write()
+        return init_data
 
-if not globalPrefsPathExists():
-    initGlobalPrefs()
-
+globalPrefs = getGlobalPrefs()
 emb_settings = localEmbSettings()
-global_prefs = autoUpdateJson(globalPrefsJsonRead())
-global_prefs.json_path = globalPrefsPath
-api_headers = {'Accept': 'application/vnd.github.v3+json'}
 
-def validate_github_token(token):
-    
+def bpy_timer():
+    print('running!!!')
+    checker = Thread(target=emb_checking, daemon=True)
+    checker.start()
+    print(bpy.types.WindowManager.emb_vars['prefs']['interval'])
+    return bpy.types.WindowManager.emb_vars['prefs']['interval']
+
+@bpy.app.handlers.persistent
+def timer_ensure(a=None, b=None):
+    bpy.app.timers.register(bpy_timer, first_interval=3)
 
 def initMaster() -> None:
-    try:
-        has_connection = requests.get('https://www.google.com').status_code == 200
-        assert has_connection
-    except:
-        has_connection = False
 
     # Allocate globals within Blender's namespace. Is this allowed?
     bpy.types.WindowManager.emb_entries = dict()
     bpy.types.WindowManager.emb_classes = master_classes
-    bpy.types.WindowManager.emb_vars = {
-        'has_connection': has_connection,
-    }
+    bpy.types.WindowManager.emb_vars = {'checker': emb_checking, 'prefs': globalPrefs, 'timer_ensure': timer_ensure, 'bpy_timer': bpy_timer}
     emb_vars = bpy.types.WindowManager.emb_vars
 
-    github_token = global_prefs.get('github_token')
-    if has_connection:
-        if (github_token != 'YOUR_TOKEN_HERE') and (not github_token in {None, ''}):
-            api_headers['Authorization'] = global_prefs['github_token']
-            emb_vars['token'] = True
+    [(register_class(cls), print(cls)) for cls in master_classes]
 
-    [register_class(cls) for cls in master_classes]
+    bpy.types.WindowManager.emb_props = PointerProperty(type=bpy_classes.emb_props)
+    bpy.app.handlers.load_post.append(timer_ensure)
+
+def uninitMaster() -> None:
+    emb_vars = bpy.types.WindowManager.emb_vars
+    for cls in reversed(bpy.types.WindowManager.emb_classes):
+        unregister_class(cls)
+    bpy.app.handlers.load_post.remove(emb_vars['timer_ensure'])
+    bpy.app.timers.unregister(emb_vars['bpy_timer'])
+    del bpy.types.WindowManager.emb_entries
+    del bpy.types.WindowManager.emb_classes
+    del bpy.types.WindowManager.emb_vars
+    del bpy.types.WindowManager.emb_props
 
 def buildEntry() -> dict:
     #addonData = getAddonData()
+    global global_id
     if not addonData:
         print('Failure to retrieve addon data. Either non-existant bl_info or blender_manifest.toml!')
         print(addon_path_name)
@@ -186,14 +262,15 @@ def buildEntry() -> dict:
         addonVersion = 'N/A_VERSION'
     elif type(addonVersion) == str: # if str
         addonVersion = tuple(map(int, addonVersion.split(',')))
+        emb_data['version'] = addonVersion
     elif type(addonVersion) == tuple: # if tuple (preferred)
-        pass
+        emb_data['version'] = addonVersion
     else: # if anything else
         addonVersion = 'N/A_VERSION'
 
     #emb_data = autoUpdateJson(localEmbData())
     #emb_data.json_path = os.path.join(emb_path, 'data.json')
-
+    global_id = id
     entry = {
         "id": id,
         "profile": profile,
@@ -207,82 +284,139 @@ def buildEntry() -> dict:
         'messages': messages,
         'update_data': dict(),
         'ignore': False, # Set this to True if an error occurs regarding its settings. It will be skipped by the checker, and only resets when Blender restarts.
+        'local_classes': set(),
+        'new_update': False
     }
 
     return entry
 
-def download_commit_content(commit, path, api_headers) -> dict:
-    import base64
-    tree = commit['commit']['tree']['url'] + '?recursive=1'
-    tree = requests.get(tree, headers=api_headers).json()
-    for item in tree.get('tree', []):
-        if item['path'] == path: break
-
-    blob = requests.get(item['url'], headers=api_headers).json()
-    content = base64.b64decode(blob['content'])
-    msg = json.loads(content)
-    return msg
-
-def write_msg_json(msg: dict, name):
-    msg['read'] = False
-    msg['notified'] = False
-    with open(os.path.join(messages_path, f'{name}.json'), 'w+') as file:
-        file.write(json.dumps(msg, indent=2))
-
-def validate_message_board(entry, repository, file_path, headers):
-    url = f"https://api.github.com/repos/{entry['profile']}/{repository}/commits"
-    params = {"path": file_path, 'per_page': 5}
-
-    response = requests.get(url, params=params, headers=headers)
-    if response.status_code == 404:
-        entry['ignore'] = True
-    if response.status_code == 403:
-        return 'rate_limited'
-    if response.status_code == 401:
-        return 'bad_token'
-    if response.json() == []:
-        entry['ignore'] = True
-        return 'continue'
-    return response
-
 def emb_checking() -> None:
+    #make_sound = False
+    #has_new_update = False
+    checking_vars = {
+        'make_sound': False,
+        'has_new_update': False,
+        'total_new_messages': 0,
+        'total_new_updates': 0,
+    }
+    #total_new_messages = 0
+    #total_new_updates = 0
+
+    import requests
+
     emb_vars = bpy.types.WindowManager.emb_vars
     if emb_vars.get('invalid_token'): return
     try:
         assert requests.get('https://www.google.com').status_code == 200
     except:
-        emb_vars['has_connection'] = False
         return None
-    emb_vars['has_connection'] = True
     
     entries: dict = bpy.types.WindowManager.emb_entries
-    github_token = global_prefs.get('github_token')
 
-    if (github_token != 'YOUR_TOKEN_HERE') and (not github_token in {None, ''}) and (not bool(emb_vars.get('invalid_token'))):
-        api_headers['Authorization'] = global_prefs['github_token']
-    queue = list(entries.items())
-    while queue:
-        entry_id, entry = queue.pop(0)
-        if entry.get('ignore'): continue
+    def process_update(entry, message_repository, update_board_path):
+        try: # getting the URL
+            url = '/'.join(['https://raw.githubusercontent.com', entry['profile'], message_repository, 'refs/heads/main', update_board_path])
+            get_messages = requests.get(url)
+            assert get_messages.status_code == 200
+        except:
+            bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='WARNING', r_message=f'{entry["id"]}: Failed to grab update data! Are profile, repository, and path parameters correct?')
+            return
+        
+        try:
+            get_messages = json.loads(get_messages.content.decode())
+        except:
+            bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='WARNING', r_message=f'{entry["id"]}: Failed to load update data as JSON! It was not formatted correctly!')
+            return
+        
+        try:
+            assert bool(get_messages['version'])
+            assert bool(get_messages['title'])
+            assert bool(get_messages['text'])
+            assert bool(get_messages['icons'])
+            assert bool(get_messages['sizes'])
+        except:
+            bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='WARNING', r_message=f'{entry["id"]}: Update data was not formatted correctly!')
+            return
+
+        get_messages['version'] = tuple(get_messages['version'])
+
+        # this was going to be for EMB's that have an update board path but no addon version. but let's only make it work if an addon version could ba nabbed
+        #if (get_messages['version'] > tuple(entry['data']['latest_version'])): # i guess do a climbing sort of thing? only make a sound if the latest retrieved version tops the latest recorded version
+        #    if entry['data']['latest_version'] != [0, 0, 0]:
+        #        checking_vars['has_new_update'] = True
+        #        checking_vars['make_sound'] = True
+        #    entry['data']['latest_version'] = get_messages['version']
+
+        if (type(entry['version']) == tuple) and (get_messages['version'] > entry['version']) and (bool(entry['update_data']) == False):
+            checking_vars['has_new_update'] = True
+            entry['new_update'] = True
+            if (get_messages['version'] > tuple(entry['data']['latest_version'])): # to prevent a ping from every time it checks and a user still hasn't updated
+                checking_vars['make_sound'] = True
+        entry['data']['latest_version'] = get_messages['version']
+
+        entry['update_data'] = get_messages
+
+        #entry['new_update'] = checking_vars['has_new_update']
+        checking_vars['total_new_updates'] += checking_vars['has_new_update']
+
+
+    def process_messages(entry, message_repository, message_board_path):
+        global make_sound
+        try: # getting the URL
+            url = '/'.join(['https://raw.githubusercontent.com', entry['profile'], message_repository, 'refs/heads/main', message_board_path])
+            get_messages = requests.get(url)
+            assert get_messages.status_code == 200
+        except:
+            bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='WARNING', r_message=f'{entry["id"]}: Failed to grab the file! Are profile, repository, and path parameters correct?')
+            return
+        try: # converting the data to a dict
+            get_messages = msgs_structure().string_to_dict(get_messages.content.decode())
+            assert bool(get_messages)
+        except:
+            bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='WARNING', r_message=f'{entry["id"]}: Failed to read the file! It was not written properly!')
+            return
+        
+        entry_msgs: msgs_structure = entry['messages']
+        entry_data: autoUpdateJson = entry['data']
+        msg_latest_time = entry_data['last_message_time']
+        get_messages_latest_time = get_messages.first[0]
+
+        if get_messages_latest_time > msg_latest_time:
+            new_messages = sum([bool(time > msg_latest_time) for time in get_messages.keys()])
+            checking_vars['total_new_messages'] += new_messages
+            entry_data['new_messages'] = new_messages
+            entry_data['last_message_time'] = get_messages_latest_time
+            checking_vars['make_sound'] = True
+
+        entry_msgs.clear()
+        entry_msgs.update(get_messages)
+        entry_msgs.write()
+
+    for id, entry in entries.items():
         if entry.get('failure'): continue
-        response = validate_message_board(
-            entry,
-            entry.get('message_repository', '{}'),
-            entry.get('message_board_path', '{}'),
-            api_headers,
-            )
-        if response == 'continue': pass
-        elif response == 'rate_limited': pass
-        elif response == 'bad_token': # The token couldn't be verified, so brick the system. Will never happen if Blender starts with a correct token.
-            emb_vars['invalid_token'] = True
-            return None
-        else:
-            msg_data = response.json()
-            for commit in msg_data:
-                commit_date = format_time(commit['commit']['committer']['date'])
-                if commit_date > emb_data['last_message_time']:
-                    msg = download_commit_content(commit, entry['message_board_path'], api_headers)
-                    write_msg_json(msg, commit_date)
+        if (message_repository := entry.get('message_repository')):
+            if (message_board_path := entry.get('message_board_path')):
+                process_messages(entry, message_repository, message_board_path)
+            if (update_board_path := entry.get('update_board_path')) and (type(entry['version']) == tuple):
+                process_update(entry, message_repository, update_board_path)
+
+    if checking_vars['make_sound'] and (emb_vars['prefs']['never_notify'] == False):
+        play_sound(emb_vars['prefs']['notification_sound'], emb_vars['prefs']['volume'])
+
+    if emb_vars['prefs']['never_notify'] == False:
+        def notify_user():
+            if checking_vars['total_new_messages'] and checking_vars['total_new_updates']:
+                message = 'messages' if checking_vars['total_new_messages'] > 1 else 'message'
+                update = 'updates' if checking_vars['total_new_messages'] > 1 else 'update'
+                bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='INFO', r_message=f'EMB: {checking_vars["total_new_messages"]} new {message}, {checking_vars["total_new_updates"]} new {update}!')
+            elif checking_vars['total_new_messages']:
+                string = 'messages' if checking_vars['total_new_messages'] > 1 else 'message'
+                bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='INFO', r_message=f'EMB: {checking_vars["total_new_messages"]} new {string}!')
+            elif checking_vars['total_new_updates']:
+                string = 'updates' if checking_vars['total_new_messages'] > 1 else 'update'
+                bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='INFO', r_message=f'EMB: {checking_vars["total_new_updates"]} new {string}!')
+        bpy.app.timers.register(notify_user)
+        
 
 
 def initLocal() -> None:
@@ -301,27 +435,65 @@ def initLocal() -> None:
         emb_entry = entry
 
         def draw_msg_body(self, context: bpy.types.Context, layout: bpy.types.UILayout):
+            entry = self.emb_entry
+            if not entry.get('messages', None):
+                layout.label(text='No messages to display!')
+                return
+            
+            if entry['data']['new_messages'] != 0:
+                entry['data']['new_messages'] = 0
+            
+            for id, values in sorted(entry['messages'].items(), key=lambda a: a[0], reverse=True):
+                title, text, icons, sizes = values.values()
+                header, body = layout.panel(f'EMB_{self.emb_id}_{id}', default_closed=True)
+                header.label(text=title)
+                if body:
+                    body.label(text='@ ' + time_to_calendar(id))
+                    text = text.encode().decode('unicode_escape')
+                    lines = text.split('\n')
+                    icons = icons.split(',')
+                    while len(lines) > len(icons): # fill icons with default until length is same as text
+                        icons.append('BLANK1')
+                    sizes = list(map(int, sizes.split(',')))
+                    while len(lines) > len(sizes): # fill sizes with default until length is same as text
+                        icons.append(56)
+                    for line, icon, size in zip(lines, icons, sizes):
+                        textBox(body, line, icon, size)
+
+
             pass
         def draw_upd_body(self, context: bpy.types.Context, layout: bpy.types.UILayout):
             entry = self.emb_entry
+            update_data = entry.get('update_data')
             if entry['version'] == 'N/A_VERSION':
                 layout.row().label(text='This EMB is not configured to check for new versions.')
                 return None
             if bool(entry['message_repository']) and bool(emb_settings['update_board_path']):
                 pass
-            elif bool(emb_settings['release_repository']):
-                pass
             else:
                 layout.row().label(text='This EMB is not configured to check for new versions.')
                 return None
             
-            if bpy.types.WindowManager.emb_vars.get('not_connected'):
-                layout.row().label(text='Not connected to internet!')
+            if not update_data:
+                layout.row().label(text='Nothing to show yet...')
                 return None
+
+            if update_data['version'] > entry['version']:
+                layout.row().label(text='A new update is available.')
+            elif update_data['version'] == entry['version']:
+                layout.row().label(text='You have the latest version.')
+            elif update_data['version'] < entry['version']:
+                layout.row().label(text='You seem to be on a newer version')
             
-            if entry.get('update_data', dict()).get('new_version') > entry['version']:
-                pass
-            layout.row().label(text='You seem to be on the latest version!')
+            lines = update_data['text'].split('\n')
+            icons = update_data['icons'].split(',')
+            sizes = map(int, update_data['sizes'].split(','))
+
+            for line, icon, size in zip(lines, icons, sizes):
+                textBox(layout, line, icon, size)
+
+            if entry.get('release_repository'):
+                layout.operator('wm.url_open').url = entry['release_repository']
 
         if entry.get('failure'):
             failure_reason = entry['failure']
@@ -332,28 +504,50 @@ def initLocal() -> None:
         else:
             def draw(self, context):
                 layout = self.layout
-                msgs_header, msgs_body = layout.panel(self.bl_idname+'_msgs')
-                msgs_header.row().label(text='Messages')
-                if msgs_body:
-                    messages = self.emb_entry['messages']
-                    msgs_body.row().label(text='Here are the messages!')
+                entry = self.emb_entry
+                update_data = entry.get('update_data', dict())
 
-                upd_header, upd_body = layout.panel(self.bl_idname+'_update')
-                upd_header.row().label(text='Updates')
+                msgs_header, msgs_body = layout.panel(self.bl_idname+'_msgs', default_closed=True)
+                header_text = 'Messages'
+                if self.emb_entry['data']['new_messages']:
+                    header_text += ' (' + str(self.emb_entry["data"]["new_messages"]) + ')'
+                msgs_header.label(text=header_text)
+                if msgs_body:
+                    self.draw_msg_body(context, msgs_body)
+
+                upd_header, upd_body = layout.panel(self.bl_idname+'_update', default_closed=True)
+                #if (type(entry['version']) == tuple) and (update_data.get('version')):
+                if (type(entry['version']) == tuple) and (entry['new_update']):
+                    current_ver = '.'.join(map(str, entry['version']))
+                    new_ver = '.'.join(map(str, entry['update_data']['version']))
+                    up_string = f'Updates (New update! {current_ver} → {new_ver})'
+                else:
+                    up_string = 'Updates'
+                upd_header.row().label(text=up_string)
                 if upd_body:
                     self.draw_upd_body(context, upd_body)
 
-
-    bpy.types.WindowManager.emb_entries[emb_id] = entry
+    entries = bpy.types.WindowManager.emb_entries
+    if (existing :=entries.get(emb_id)):
+        for cls in existing['local_classes']:
+            unregister_class(cls)
+        del entries[emb_id]
+    entries[emb_id] = entry
+    entry['local_classes'].add(emb_panel)
     register_class(emb_panel)
 
 def register():
-    if not globalPrefsPathExists():
-        initGlobalPrefs()
     if getattr(bpy.types.WindowManager, 'emb_entries', None) == None:
         initMaster()
     initLocal()
     pass
 
 def unregister():
+    entries = bpy.types.WindowManager.emb_entries
+    if entries.get(global_id):
+        for cls in entries[global_id]['local_classes']:
+            unregister_class(cls)
+        del entries[global_id]
+    if len(entries) == 0:
+        uninitMaster()
     pass

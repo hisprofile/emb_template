@@ -2,7 +2,7 @@
     "id": "optiploy",
     "profile": "hisprofile",
     "message_repository": "blenderstuff",
-    "message_board_path": "online/optiploy_message_board.json",
-    "update_board_path": "",
+    "message_board_path": "online/optiploy_message_board.data",
+    "update_board_path": "online/optiploy_update_data.json",
     "release_repository": ""
 }
