@@ -25,6 +25,11 @@ class EMB_PT_gen_panel(Panel):
     bl_options = {'DEFAULT_CLOSED'}
     bl_order = 999999
 
+    @classmethod
+    def poll(cls, context):
+        emb_vars = bpy.types.WindowManager.emb_vars
+        return emb_vars['prefs']['show_dev_message_generator']
+
     def draw(self, context):
         props = context.window_manager.emb_props
         icons = bpy.types.UILayout.bl_rna.functions['label'].parameters['icon']
@@ -202,6 +207,44 @@ class EMB_OT_clear_gen(Operator):
         props.v_patch = 0
         return {'FINISHED'}
     
+class EMB_OT_ignore_version(Operator):
+    bl_idname = 'emb.ignore_version'
+    bl_label = 'Ignore Version'
+
+    emb_id: StringProperty()
+    v_major: IntProperty()
+    v_minor: IntProperty()
+    v_patch: IntProperty()
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event, message='Irreversible!')
+
+    def execute(self, context):
+        emb_entries = bpy.types.WindowManager.emb_entries
+        entry = emb_entries[self.emb_id]
+        ignoring = entry['data']['update_ignore_this_version']
+        ignoring[0] = self.v_major
+        ignoring[1] = self.v_minor
+        ignoring[2] = self.v_major
+        entry['data'].write()
+        self.report({'INFO'}, 'You will be notified when the next version releases.')
+        return {'FINISHED'}
+    
+class EMB_OT_ignore_future_versions(Operator):
+    bl_idname = 'emb.ignore_future_versions'
+    bl_label = 'Ignore Future Versions'
+
+    emb_id: StringProperty()
+
+    def execute(self, context):
+        emb_entries = bpy.types.WindowManager.emb_entries
+        entry = emb_entries[self.emb_id]
+        data = entry['data']
+        data['update_ignore_future_versions'] = bool(1 - data['update_ignore_future_versions'])
+        string = 'You will no longer be notified for future updates.' if data['update_ignore_future_versions'] else 'You will be notified for future updates.'
+        self.report({'INFO'}, string)
+        return {'FINISHED'}
+    
 class EMB_OT_play_sound(Operator):
     bl_idname = 'emb.play_sound'
     bl_label = 'Play Sound'
@@ -222,7 +265,17 @@ class EMB_OT_adjust_preferences(Operator):
         'global_disable',
         'volume',
         'notification_sound',
-        'never_notify'
+        'never_notify',
+        'show_dev_message_generator'
+    ]
+
+    labels = [
+        'EMB Check Interval (seconds)',
+        'Globally disable EMB',
+        'Notification Volume',
+        'Notification Sound',
+        'Never Notify (No report, no sound)',
+        'Show Developer Message Generator'
     ]
 
     interval: IntProperty(min=3)
@@ -230,11 +283,12 @@ class EMB_OT_adjust_preferences(Operator):
     volume: FloatProperty(min=0.0, max=1.0)
     notification_sound: StringProperty(subtype='FILE_PATH')
     never_notify: BoolProperty()
+    show_dev_message_generator: BoolProperty()
     
     def draw(self, context):
         layout = self.layout
-        for prop in self.props:
-            layout.prop(self, prop)
+        for prop, label in zip(self.props, self.labels):
+            layout.prop(self, prop, text=label)
         op = layout.operator('emb.play_sound')
         op.path = self.notification_sound
         op.volume = self.volume
@@ -292,6 +346,8 @@ master_classes = [
     EMB_OT_boxes_clipboard,
     EMB_OT_adjust_preferences,
     EMB_OT_play_sound,
+    #EMB_OT_ignore_version,
+    EMB_OT_ignore_future_versions,
     textbox_props,
     emb_props,
 ]

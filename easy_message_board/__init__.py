@@ -31,7 +31,6 @@ separate_chr = '¸' '''
 
 emb_id = None
 emb_classes = set()
-messages = dict()
 
 try:
     from .. import bl_info
@@ -179,7 +178,8 @@ def getGlobalPrefs() -> None:
             #'delete_after_#': 15, # Delete messages when they exceed a threshold. This is per-EMB, not across all EMBs. 0 to never delete
             'volume': 0.2,
             'notification_sound': os.path.join(globalPrefsFolder, notif_name),
-            'never_notify': False
+            'never_notify': False,
+            'show_dev_message_generator': False,
         })
         init_data.json_path = globalPrefsPath
         init_data.write()
@@ -189,10 +189,9 @@ globalPrefs = getGlobalPrefs()
 emb_settings = localEmbSettings()
 
 def bpy_timer():
-    print('running!!!')
+    if bpy.types.WindowManager.emb_vars['prefs']['global_disable']: return
     checker = Thread(target=emb_checking, daemon=True)
     checker.start()
-    print(bpy.types.WindowManager.emb_vars['prefs']['interval'])
     return bpy.types.WindowManager.emb_vars['prefs']['interval']
 
 @bpy.app.handlers.persistent
@@ -211,6 +210,7 @@ def initMaster() -> None:
 
     bpy.types.WindowManager.emb_props = PointerProperty(type=bpy_classes.emb_props)
     bpy.app.handlers.load_post.append(timer_ensure)
+    bpy.app.timers.register(bpy_timer, first_interval=3)
 
 def uninitMaster() -> None:
     emb_vars = bpy.types.WindowManager.emb_vars
@@ -262,9 +262,10 @@ def buildEntry() -> dict:
         addonVersion = 'N/A_VERSION'
     elif type(addonVersion) == str: # if str
         addonVersion = tuple(map(int, addonVersion.split(',')))
-        emb_data['version'] = addonVersion
+        #emb_data['version'] = addonVersion
     elif type(addonVersion) == tuple: # if tuple (preferred)
-        emb_data['version'] = addonVersion
+        pass
+        #emb_data['version'] = addonVersion
     else: # if anything else
         addonVersion = 'N/A_VERSION'
 
@@ -327,7 +328,7 @@ def emb_checking() -> None:
         except:
             bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='WARNING', r_message=f'{entry["id"]}: Failed to load update data as JSON! It was not formatted correctly!')
             return
-        
+
         try:
             assert bool(get_messages['version'])
             assert bool(get_messages['title'])
@@ -347,16 +348,20 @@ def emb_checking() -> None:
         #        checking_vars['make_sound'] = True
         #    entry['data']['latest_version'] = get_messages['version']
 
-        if (type(entry['version']) == tuple) and (get_messages['version'] > entry['version']) and (bool(entry['update_data']) == False):
-            checking_vars['has_new_update'] = True
+        no_notify = entry['data']['update_ignore_future_versions']#False
+        #if (tuple(entry['data']['update_ignore_this_version']) >= get_messages['version']) or entry['data']['update_ignore_future_versions']:
+        #    no_notify = True
+
+        if (type(entry['version']) == tuple) \
+        and (get_messages['version'] > entry['version']) \
+        and (bool(entry['update_data']) == False):
+            checking_vars['has_new_update'] = True and not no_notify
             entry['new_update'] = True
             if (get_messages['version'] > tuple(entry['data']['latest_version'])): # to prevent a ping from every time it checks and a user still hasn't updated
-                checking_vars['make_sound'] = True
+                checking_vars['make_sound'] = True and not no_notify
+
         entry['data']['latest_version'] = get_messages['version']
-
         entry['update_data'] = get_messages
-
-        #entry['new_update'] = checking_vars['has_new_update']
         checking_vars['total_new_updates'] += checking_vars['has_new_update']
 
 
@@ -392,7 +397,7 @@ def emb_checking() -> None:
         entry_msgs.update(get_messages)
         entry_msgs.write()
 
-    for id, entry in entries.items():
+    for id, entry in list(entries.items()):
         if entry.get('failure'): continue
         if (message_repository := entry.get('message_repository')):
             if (message_board_path := entry.get('message_board_path')):
@@ -403,19 +408,20 @@ def emb_checking() -> None:
     if checking_vars['make_sound'] and (emb_vars['prefs']['never_notify'] == False):
         play_sound(emb_vars['prefs']['notification_sound'], emb_vars['prefs']['volume'])
 
-    if emb_vars['prefs']['never_notify'] == False:
-        def notify_user():
-            if checking_vars['total_new_messages'] and checking_vars['total_new_updates']:
-                message = 'messages' if checking_vars['total_new_messages'] > 1 else 'message'
-                update = 'updates' if checking_vars['total_new_messages'] > 1 else 'update'
-                bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='INFO', r_message=f'EMB: {checking_vars["total_new_messages"]} new {message}, {checking_vars["total_new_updates"]} new {update}!')
-            elif checking_vars['total_new_messages']:
-                string = 'messages' if checking_vars['total_new_messages'] > 1 else 'message'
-                bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='INFO', r_message=f'EMB: {checking_vars["total_new_messages"]} new {string}!')
-            elif checking_vars['total_new_updates']:
-                string = 'updates' if checking_vars['total_new_messages'] > 1 else 'update'
-                bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='INFO', r_message=f'EMB: {checking_vars["total_new_updates"]} new {string}!')
-        bpy.app.timers.register(notify_user)
+    if emb_vars['prefs']['never_notify']: return
+    
+    def notify_user():
+        if checking_vars['total_new_messages'] and checking_vars['total_new_updates']:
+            message = 'messages' if checking_vars['total_new_messages'] > 1 else 'message'
+            update = 'updates' if checking_vars['total_new_messages'] > 1 else 'update'
+            bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='INFO', r_message=f'Tools > EMB: {checking_vars["total_new_messages"]} new {message}, {checking_vars["total_new_updates"]} new {update}!')
+        elif checking_vars['total_new_messages']:
+            string = 'messages' if checking_vars['total_new_messages'] > 1 else 'message'
+            bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='INFO', r_message=f'Tools > EMB: {checking_vars["total_new_messages"]} new {string}!')
+        elif checking_vars['total_new_updates']:
+            string = 'updates' if checking_vars['total_new_messages'] > 1 else 'update'
+            bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type='INFO', r_message=f'Tools > EMB: {checking_vars["total_new_updates"]} new {string}!')
+    bpy.app.timers.register(notify_user)
         
 
 
@@ -426,7 +432,8 @@ def initLocal() -> None:
 
     class emb_panel(Panel):
         bl_idname = f'EMB_PT_{emb_id}'
-        bl_label = addonData.get('name', addon_path_name)
+        bl_label = '' # i will draw cusotm header
+        label = addonData.get('name', addon_path_name)
         bl_category = 'TOOLS'
         bl_space_type = 'VIEW_3D'
         bl_region_type = 'UI'
@@ -480,6 +487,9 @@ def initLocal() -> None:
 
             if update_data['version'] > entry['version']:
                 layout.row().label(text='A new update is available.')
+                row = layout.row()
+                text = 'Ignore Future Versions' if not entry['data']['update_ignore_future_versions'] else 'Notify for Future Versions'
+                row.operator('emb.ignore_future_versions', text=text).emb_id = self.emb_id
             elif update_data['version'] == entry['version']:
                 layout.row().label(text='You have the latest version.')
             elif update_data['version'] < entry['version']:
@@ -493,24 +503,45 @@ def initLocal() -> None:
                 textBox(layout, line, icon, size)
 
             if entry.get('release_repository'):
-                layout.operator('wm.url_open').url = entry['release_repository']
+                layout.operator('wm.url_open', text='Releases Page').url = entry['release_repository']
 
         if entry.get('failure'):
+            def draw_header(self, context):
+                text = self.bl_label
+                self.layout.label(text=text)
+                
             failure_reason = entry['failure']
             def draw(self, context):
                 layout = self.layout
                 layout.label(text=f'The EMB for {self.emb_id} failed to register.')
                 layout.label(text=self.failure_reason)
         else:
+            def draw_header(self, context):
+                entry = self.emb_entry
+                data = entry['data']
+                text = self.label
+                notifs = []
+                
+                if data['new_messages'] == 1:
+                    notifs.append('1 Message')
+                elif data['new_messages'] > 1:
+                    notifs.append(f'{data["new_messages"]} Messages')
+                if entry['new_update']:
+                    notifs.append('New Update')
+                if notifs:
+                    notifs = ' (' + ', '.join(notifs) + ')'
+                    text += notifs
+
+                self.layout.label(text=text)
+
             def draw(self, context):
                 layout = self.layout
                 entry = self.emb_entry
-                update_data = entry.get('update_data', dict())
 
                 msgs_header, msgs_body = layout.panel(self.bl_idname+'_msgs', default_closed=True)
                 header_text = 'Messages'
                 if self.emb_entry['data']['new_messages']:
-                    header_text += ' (' + str(self.emb_entry["data"]["new_messages"]) + ')'
+                    header_text += ' (' + str(entry["data"]["new_messages"]) + ')'
                 msgs_header.label(text=header_text)
                 if msgs_body:
                     self.draw_msg_body(context, msgs_body)
