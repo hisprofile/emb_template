@@ -1,5 +1,5 @@
 bl_info = {
-    "name" : "Simple Thing",
+    "name" : "MAL Tools",
     "description" : "Simple addon for EMB",
     "author" : "hisanimations",
     "version" : (1, 0, 0),

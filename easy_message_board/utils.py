@@ -80,3 +80,8 @@ def play_sound(path, volume = 1.0):
     sound = aud.Sound(path)
     dev.volume = volume
     dev.play(sound)
+
+def operator_report(r_type, r_message):
+    def sub_report_function():
+        bpy.ops.emb.quick_report('INVOKE_DEFAULT', r_type=r_type, r_message=r_message)
+    bpy.app.timers.register(sub_report_function)

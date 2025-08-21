@@ -1,8 +1,6 @@
 {
     "id": "optiploy",
-    "profile": "hisprofile",
-    "message_repository": "blenderstuff",
-    "message_board_path": "online/optiploy_message_board.data",
-    "update_board_path": "online/optiploy_update_data.json",
+    "message_board_path": "https://pastebin.com/raw/JBZrjS7u",
+    "update_board_path": "https://pastebin.com/raw/4fdQ0msQ",
     "release_repository": "https://www.youtube.com/watch?v=08qd-vsHbaY"
 }
