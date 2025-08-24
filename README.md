@@ -4,13 +4,18 @@ The "Easy Message Board" system allows developers to seamlessly integrate a mess
 
 It's an @everyone for Blender!
 
-Easy Message Board is located in the `Tool` panel of Blender.
+Easy Message Board is located in the `Tool` panel of Blender.  
+  
+<img width="60%" alt="image" src="https://github.com/user-attachments/assets/09e1bb01-97ec-48e9-bbf6-547e43a77549" />
 
 ## How it works
 Based on a user-defined interval, the EMB system will regularly update its message board with data uploaded from the developer. Updates are done through visiting a URL that contains raw text. What's easier than that? Update data is a regular .json file, whereas message data has a special format that makes it easier to add new messages. Make a new line and copy new message data.
 
 ## User settings
 Users can change how EMB works, such as the checking interval, the notification sound & volume, they may disable notifications, or the EMB system as a whole.
+
+<img width="417" height="253" alt="image" src="https://github.com/user-attachments/assets/5a18316f-b1d3-40c4-a9aa-6609628c181f" />
+
 
 # Using Easy Message Board as a developer
 ## Integrating EMB
@@ -87,16 +92,22 @@ New update data should replace the old update data entirely.
 
 ## Message generation tool
 Because this is an Easy Message Board, you have a tool to create message data! You can enable this tool to show by going to `Adjust Preferences > Show Developer Message Generator`  
+<img width="633" height="614" alt="image" src="https://github.com/user-attachments/assets/306b0dfa-0fbd-4110-a81f-4fce16db9439" />
 
 At the top is a switch between generating message or update data.
 
-There are parameters for icons, text, line sizes, and to turn a text box into a URL. If enabled, icon parameters become URL parameters, and text parameters become URL Name parameters.  
+There are parameters for icons, text, line sizes, and to turn a text box into a URL. If `is_url` is enabled, icon parameters become URL parameters, and text parameters become URL Name parameters.  
+<img width="628" height="609" alt="image" src="https://github.com/user-attachments/assets/40be91f4-ad7e-43a3-8fc7-d6f2180bb530" />
 
-If a message is set to `Is Update`, a version parameter shows to change major, minor, and patch info.
+If a message is set to `Is Update`, a version parameter shows to change major, minor, and patch info.  
+<img width="629" height="510" alt="image" src="https://github.com/user-attachments/assets/5d25cae0-7d0d-4457-adc1-8eff3f66b9bc" />
+
+
 
 When you are finished with your message, click `Copy Text Boxes to clipboard`.  
 If you are updating your message board, open up the file editor and paste the message data in a new line.  
 If you are updating your update board, open up the file editor and replace the old data with the new data entirely.  
+<img width="846" height="893" alt="image" src="https://github.com/user-attachments/assets/53246e55-d44e-4d6c-b28c-ca653e091ed7" />
 
 Once your file is saved, your EMB should update with the changes!
 
