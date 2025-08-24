@@ -359,7 +359,7 @@ class EMB_OT_adjust_preferences(Operator):
 		op.volume = self.volume
 
 		layout.separator()
-		layout.operator('wm.url_open', text='EMB Documentation').url = 'https://github.com/hisprofile/emb_template/blob/main/README.md'
+		layout.operator('wm.url_open', text='EMB Documentation', icon='URL').url = 'https://github.com/hisprofile/emb_template/blob/main/README.md'
 
 	def invoke(self, context, event):
 		emb_v = context.window_manager.emb_vars
