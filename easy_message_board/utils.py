@@ -34,7 +34,19 @@ def textBox(self, sentence, icon='NONE', line=56):
 			if sentence == []:
 				layout.row().label(text=mix)
 				return None
-
+			
+#from textwrap import TextWrapper # may be used in the future
+#def label_multiline(
+#    context, text, parent, icon=""
+#):  # Thanks to B3D Interplanetary for this code snippet
+#    chars = int(context.region.width / (7 * context.preferences.view.ui_scale))  # 7 pix on 1 character
+#    wrapper = TextWrapper(width=chars)
+#    text_lines = wrapper.wrap(text=text)
+#    for index, text_line in enumerate(text_lines):
+#        if icon and index == 0:
+#            parent.label(text=text_line, icon=icon)
+#        else:
+#            parent.label(text=text_line)
 
 class generictext(bpy.types.Operator):
 	text: StringProperty(default='')

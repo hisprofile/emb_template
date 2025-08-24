@@ -3,11 +3,12 @@ import json
 import os
 import tomllib
 import time
+import traceback
 from threading import Thread
 from . import bpy_classes
 from bpy.types import Panel
 from bpy.utils import register_class, unregister_class
-from .utils import download_file, time_to_calendar, textBox, play_sound, operator_report
+from .utils import download_file, time_to_calendar, textBox, play_sound, operator_report#, label_multiline
 from .bpy_classes import master_classes
 from .main_vars import (
 	emb_path,
@@ -328,17 +329,19 @@ def emb_checking() -> None:
 			get_messages = requests.get(url)
 			assert get_messages.status_code == 200
 		except:
+			traceback.print_exc()
 			if entry.get('last_error_upd', '') != 'UPD_BAD_URL':
 				entry['last_error_upd'] = 'UPD_BAD_URL'
 				operator_report(
 					r_type='WARNING',
-					r_message=f'{entry["id"]}: Failed to grab update data! Are profile, repository, and path parameters correct?',
+					r_message=f'{entry["id"]}: Failed to grab update data! Is the URL correct?',
 				)
 			return
 
 		try:  # converting the data to a dict
 			get_messages = json.loads(get_messages.content.decode())
 		except:
+			traceback.print_exc()
 			if entry.get('last_error_upd', '') != 'UPD_BAD_ENCODE':
 				entry['last_error_upd'] = 'UPD_BAD_ENCODE'
 				operator_report(
@@ -387,11 +390,12 @@ def emb_checking() -> None:
 			get_messages = requests.get(url)
 			assert get_messages.status_code == 200
 		except:
+			traceback.print_exc()
 			if entry.get('last_error_msg', '') != 'MSG_BAD_URL':
 				entry['last_error_msg'] = 'MSG_BAD_URL'
 				operator_report(
 					r_type='WARNING',
-					r_message=f'{entry["id"]}: Failed to grab the file! Is the URL correct?',
+					r_message=f'{entry["id"]}: Failed to grab message data! Is the URL correct?',
 				)
 			return
 		try:  # converting the data to a dict
@@ -400,6 +404,7 @@ def emb_checking() -> None:
 			)
 			assert bool(get_messages)
 		except:
+			traceback.print_exc()
 			if entry.get('last_error_msg', '') != 'MSG_BAD_ENCODE':
 				entry['last_error_msg'] = 'MSG_BAD_ENCODE'
 				operator_report(
@@ -520,6 +525,8 @@ def init_local() -> None:
 				while len(lines) > len(sizes):  # fill sizes with default until length is same as text
 					icons.append(56)
 				for line, icon, size in zip(lines, icons, sizes):
+					#box = body.box().column()
+					#label_multiline(context, line, box, icon)
 					textBox(body, line, icon, size)
 
 			pass
