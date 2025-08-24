@@ -10,17 +10,25 @@ from bpy.types import Panel
 from bpy.utils import register_class, unregister_class
 from .utils import download_file, time_to_calendar, textBox, play_sound, operator_report#, label_multiline
 from .bpy_classes import master_classes
-from .main_vars import (
-	emb_path,
-	emb_data_path,
-	addon_path,
-	addon_path_name,
-	global_prefs_folder,
-	global_prefs_path,
-	messages_path,
-	separate_chr
-)
+import bpy
+from pathlib import Path
+
 from bpy.props import PointerProperty
+
+emb_path = os.path.dirname(__file__)
+emb_data_path = os.path.join(emb_path, 'data.json')
+path_split = emb_path.split(os.path.sep)
+addon_path = os.path.sep.join(path_split[:-1])
+
+addon_path_name = os.path.basename(addon_path)
+blender_resource_path = str(Path(bpy.utils.resource_path('USER')).parents[0])
+global_prefs_folder = os.path.join(blender_resource_path, 'emb_data')
+if not os.path.exists(global_prefs_folder):
+	os.makedirs(global_prefs_folder)
+
+global_prefs_path = os.path.join(global_prefs_folder, 'emb_prefs.json')
+
+messages_path = os.path.join(emb_path, 'messages.data')
 
 EMB_VERSION = (1, 0, 0) # i mean it's no different from using a .toml file
 
@@ -79,7 +87,7 @@ class MsgsStructure(dict):
 		lines = string.split('\n')
 		while '' in lines:
 			lines.remove('')
-		lines = list(map(lambda a: a.split(separate_chr), lines))
+		lines = list(map(lambda a: a.split('¸'), lines))
 		for item in lines:
 			if len(item) != 5:
 				continue
@@ -91,7 +99,7 @@ class MsgsStructure(dict):
 	def write(self):
 		file = open(self.file_path, 'w')
 		for key, value in self.items():
-			file.write(separate_chr.join([str(key), *list(value.values())]))
+			file.write('¸'.join([str(key), *list(value.values())]))
 			file.write('\n')
 		file.close()
 

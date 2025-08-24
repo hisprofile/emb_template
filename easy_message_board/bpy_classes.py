@@ -10,7 +10,6 @@ from bpy.props import (
 )
 from bpy.types import Operator, Panel, PropertyGroup
 from .utils import textBox, play_sound
-from .main_vars import separate_chr
 
 
 class EMB_PT_main_panel(Panel):
@@ -170,7 +169,7 @@ class EMB_OT_boxes_clipboard(Operator):
 			)
 			icons = ','.join([box.icon for box in props.text_boxes])
 			sizes = ','.join([str(box.size) for box in props.text_boxes])
-			final = separate_chr.join(
+			final = '¸'.join(
 				[str(int(time())), props.title, texts, icons, sizes]
 			)
 			context.window_manager.clipboard = final
