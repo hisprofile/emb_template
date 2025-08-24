@@ -1,0 +1,6 @@
+{
+    "id": "my_awesome_addon",
+    "message_board_path": "any_url_to_raw_text",
+    "update_board_path": "any_url_to_raw_text",
+    "release_repository": "any_url_to_a_download_page"
+}
