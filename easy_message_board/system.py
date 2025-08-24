@@ -484,6 +484,7 @@ def init_local() -> None:
 		emb_entry = entry
 
 		def draw_msg_body(self, context: bpy.types.Context, layout: bpy.types.UILayout):
+			all_icons = bpy.types.UILayout.bl_rna.functions['label'].parameters['icon'].enum_items
 			entry = self.emb_entry
 			if not bool(entry.get('message_board_path')):
 				layout.label(text='This EMB is not configured to check for messages.')
@@ -527,11 +528,13 @@ def init_local() -> None:
 				for line, icon, size in zip(lines, icons, sizes):
 					#box = body.box().column()
 					#label_multiline(context, line, box, icon)
+					if not icon in all_icons: icon = 'DOT'
 					textBox(body, line, icon, size)
 
 			pass
 
 		def draw_upd_body(self, context: bpy.types.Context, layout: bpy.types.UILayout):
+			all_icons = bpy.types.UILayout.bl_rna.functions['label'].parameters['icon'].enum_items
 			entry = self.emb_entry
 			update_data = entry.get('update_data')
 			if entry['version'] == 'N/A_VERSION':
@@ -576,6 +579,7 @@ def init_local() -> None:
 			sizes = map(int, update_data['sizes'].split(','))
 
 			for line, icon, size in zip(lines, icons, sizes):
+				if not icon in all_icons: icon = 'DOT'
 				textBox(col, line, icon, size)
 
 			if entry.get('release_repository'):
